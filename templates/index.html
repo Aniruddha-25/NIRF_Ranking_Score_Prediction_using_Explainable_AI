@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Institute Prediction System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Institute Prediction System</h1>
+        
+        <div id="form-section">
+            <h2>Select an Institute</h2>
+            <div class="form-group">
+                <label for="institute">Institute Name:</label>
+                <select id="institute" required>
+                    <option value="">-- Select an Institute --</option>
+                </select>
+            </div>
+            <button onclick="predict()">Predict Future Ranking</button>
+        </div>
+
+        <div id="error-message"></div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing prediction...</p>
+        </div>
+
+        <div class="result" id="result">
+            <h2>Analysis Results</h2>
+            
+            <h3>Selected Institute</h3>
+            <table id="institute-info"></table>
+
+            <h3>Current Year</h3>
+            <table id="present-year"></table>
+
+            <h3>5-Year Forecast</h3>
+            <table id="forecast"></table>
+
+            <div class="conclusion" id="conclusion"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

@@ -6,9 +6,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
+from flask import Flask, render_template_string, request, jsonify
+import webbrowser
+import threading
 import warnings
-
 warnings.filterwarnings("ignore")
+
+app = Flask(__name__)
 
 # =====================================================
 # 1. LOAD DATA
@@ -120,148 +124,111 @@ for name, model in models.items():
         best_model = model
         best_acc = acc
 
-print(f"\nBest Model Selected → Accuracy = {best_acc:.4f}\n")
-
 # =====================================================
-# 5. SELECT COLLEGE
+# FLASK ROUTES
 # =====================================================
 
-disp = df[["Institute Name", "City"]].reset_index().rename(columns={"index": "SrNo"})
+@app.route('/')
+def index():
+    return render_template_string(open('./templates/index.html').read())
 
-print("\n============================")
-print("      SELECT A COLLEGE")
-print("============================\n")
+@app.route('/get_institutes')
+def get_institutes():
+    institutes = df['Institute Name'].unique().tolist()
+    return jsonify(sorted(institutes))
 
-print(disp.to_string(index=False))
-
-choice = input("\nEnter SrNo OR Institute Name: ").strip()
-
-if choice.isdigit():
-    row = df.loc[int(choice)]
-else:
-    sel = df[df["Institute Name"].str.lower().str.contains(choice.lower())]
-    if len(sel) == 0:
-        raise ValueError("No such college found.")
-    elif len(sel) > 1:
-        print("\nMultiple Matches:")
-        opt = sel.reset_index().rename(columns={"index": "SrNo"})
-        print(opt.to_string(index=False))
-        idx = int(input("\nChoose SrNo: "))
-        row = df.loc[idx]
-    else:
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        institute_name = data.get('institute_name', '').strip()
+        
+        # Find institute
+        sel = df[df["Institute Name"].str.lower() == institute_name.lower()]
+        if len(sel) == 0:
+            return jsonify({'error': 'Institute not found'}), 404
+        
         row = sel.iloc[0]
 
-# =====================================================
-# 6. PRINT SELECTED INSTITUTE (TABLE STYLE)
-# =====================================================
+        # Prepare input
+        base = pd.DataFrame(columns=feature_cols)
+        base.loc[0] = 0
 
-print("\n============================")
-print("      SELECTED INSTITUTE")
-print("============================\n")
+        for col in ["TLR", "RPC", "GO", "OI", "Perception"]:
+            base.at[0, col] = row[col]
 
-selected_info = pd.DataFrame(
-    {
-        "Field": ["Institute Id", "Institute Name", "City", "State"],
-        "Value": [
-            row["Institute Id"],
-            row["Institute Name"],
-            row["City"],
-            row["State"],
-        ],
-    }
-)
+        for col in ["Institute Id", "Institute Name", "City", "State"]:
+            mp = safe_map[col]
+            v = row[col]
+            base.at[0, col] = mp[v] if v in mp else mp["__NEW__"]
 
-print(selected_info.to_string(index=False))
+        # Current year
+        present_year = datetime.datetime.now().year
+        curr_score = float(row["Score"])
+        curr_rank = float(row["Rank"])
 
-# =====================================================
-# 7. PREPARE INPUT FOR ML
-# =====================================================
+        scaled = scaler.transform(base)
+        present_mv = best_model.predict(scaled)[0]
 
-base = pd.DataFrame(columns=feature_cols)
-base.loc[0] = 0
+        # Predictions
+        score_delta = {"Improve": 2, "Stable": 0, "Decline": -2}
+        rank_factor = {"Improve": 0.98, "Stable": 1.00, "Decline": 1.02}
 
-for col in ["TLR", "RPC", "GO", "OI", "Perception"]:
-    base.at[0, col] = row[col]
+        future_rows = []
+        base_copy = base.copy()
 
-for col in ["Institute Id", "Institute Name", "City", "State"]:
-    mp = safe_map[col]
-    v = row[col]
-    base.at[0, col] = mp[v] if v in mp else mp["__NEW__"]
+        for i in range(1, 6):
+            yr = present_year + i
+            scaled_future = scaler.transform(base_copy)
+            mv = best_model.predict(scaled_future)[0]
 
-# =====================================================
-# 8. PRESENT YEAR (SYSTEM YEAR)
-# =====================================================
+            d = score_delta[mv]
+            curr_score = max(0, curr_score + d)
+            curr_rank = max(1, curr_rank * rank_factor[mv])
 
-present_year = datetime.datetime.now().year
-curr_score = float(row["Score"])
-curr_rank = float(row["Rank"])
+            for c in ["TLR", "RPC", "GO", "OI", "Perception"]:
+                base_copy.at[0, c] += d
 
-scaled = scaler.transform(base)
-present_mv = best_model.predict(scaled)[0]
+            future_rows.append({
+                'year': yr,
+                'score': round(curr_score, 2),
+                'rank': int(round(curr_rank)),
+                'movement': mv
+            })
 
-print("\n============================")
-print("      PRESENT YEAR RESULT")
-print("============================\n")
+        # Conclusion
+        mvts = [r['movement'] for r in future_rows]
+        if mvts.count("Improve") >= 3:
+            conclusion = "Institution will MOST LIKELY IMPROVE."
+        elif mvts.count("Decline") >= 3:
+            conclusion = "Institution will MOST LIKELY DECLINE."
+        else:
+            conclusion = "Institution will MOST LIKELY REMAIN STABLE."
 
-present_table = pd.DataFrame(
-    {
-        "Year": [present_year],
-        "Score": [curr_score],
-        "Rank": [int(curr_rank)],
-        "Movement": [present_mv],
-    }
-)
+        return jsonify({
+            'institute_info': {
+                'Institute Id': row['Institute Id'],
+                'Institute Name': row['Institute Name'],
+                'City': row['City'],
+                'State': row['State']
+            },
+            'present': {
+                'year': present_year,
+                'score': round(row['Score'], 2),
+                'rank': int(row['Rank']),
+                'movement': present_mv
+            },
+            'forecast': future_rows,
+            'conclusion': conclusion
+        })
 
-print(present_table.to_string(index=False))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-# =====================================================
-# 9. NEXT 5 YEARS PREDICTION
-# =====================================================
-
-score_delta = {"Improve": 2, "Stable": 0, "Decline": -2}
-rank_factor = {"Improve": 0.98, "Stable": 1.00, "Decline": 1.02}
-
-future_rows = []
-
-for i in range(1, 6):
-    yr = present_year + i
-
-    scaled_future = scaler.transform(base)
-    mv = best_model.predict(scaled_future)[0]
-
-    d = score_delta[mv]
-    curr_score = max(0, curr_score + d)
-    curr_rank = max(1, curr_rank * rank_factor[mv])
-
-    for c in ["TLR", "RPC", "GO", "OI", "Perception"]:
-        base.at[0, c] += d
-
-    future_rows.append([yr, round(curr_score, 2), int(round(curr_rank)), mv])
-
-future_df = pd.DataFrame(future_rows, columns=["Year", "Score", "Rank", "Movement"])
-
-print("\n============================")
-print("      NEXT 5 YEARS FORECAST")
-print("============================\n")
-print(future_df.to_string(index=False))
-
-# =====================================================
-# 10. FINAL CONCLUSION
-# =====================================================
-
-mvts = future_df["Movement"].tolist()
-
-if mvts.count("Improve") >= 3:
-    final = "Institution will MOST LIKELY IMPROVE."
-elif mvts.count("Decline") >= 3:
-    final = "Institution will MOST LIKELY DECLINE."
-else:
-    final = "Institution will MOST LIKELY REMAIN STABLE."
-
-print("\n============================")
-print("        FINAL CONCLUSION")
-print("============================")
-print(final)
+if __name__ == '__main__':
+    # Open browser
+    threading.Timer(1.0, lambda: webbrowser.open('http://127.0.0.1:5000')).start()
+    app.run(debug=True, use_reloader=False)
 
 
 

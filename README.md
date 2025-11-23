@@ -1,6 +1,17 @@
 # NIRF Ranking Score Prediction using Explainable AI
+<img width="1918" height="866" alt="NIRF_Ranking_Score_Prediction_using_Explainable_AI_1" src="https://github.com/user-attachments/assets/bedc8682-6d19-44de-b6e5-19cf1402d11d" />
+<img width="1918" height="872" alt="NIRF_Ranking_Score_Prediction_using_Explainable_AI_2" src="https://github.com/user-attachments/assets/c951cdbc-70da-4a70-ab9c-053ab94b8082" />
 
-- Predicts the ranking score and movement of educational institutions.
+## Result 
+<p align="center">
+  <img width="558" height="778" 
+       src="https://github.com/user-attachments/assets/c8d368c9-1740-4a78-aaa3-04f2954fbfd5" 
+       alt="NIRF_Ranking_Score_Prediction_using_Explainable_AI_3">
+</p>
+
+
+
+### Predicts the Ranking Score and Movement of Educational Institutions.
 
   - Uses Machine Learning models based on the NIRF (National Institutional Ranking Framework) evaluation system.
 
